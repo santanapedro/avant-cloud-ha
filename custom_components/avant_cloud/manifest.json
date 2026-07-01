@@ -1,0 +1,12 @@
+{
+  "domain": "avant_cloud",
+  "name": "Avant Cloud",
+  "version": "1.0.0",
+  "documentation": "https://cloud.avantautomacao.com",
+  "requirements": [],
+  "after_dependencies": ["hassio", "backup", "network"],
+  "codeowners": [],
+  "iot_class": "cloud_push",
+  "config_flow": true,
+  "integration_type": "service"
+}

@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurar Avant Cloud",
+        "description": "Insira a URL do servidor e o token gerado no cadastro deste dispositivo.",
+        "data": {
+          "url": "URL do servidor",
+          "token": "Token de acesso"
+        },
+        "data_description": {
+          "url": "Somente a base, sem path. Ex: https://cloud.avantautomacao.com ou http://192.168.1.10:8085",
+          "token": "Token exibido uma única vez ao cadastrar o servidor"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Não foi possível conectar ao servidor. Verifique a URL.",
+      "invalid_token": "Token inválido ou sem permissão.",
+      "timeout": "Tempo de conexão esgotado. O servidor está acessível?",
+      "unknown": "Erro desconhecido. Verifique os logs do Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Este servidor já está configurado."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurações — Avant Cloud",
+        "data": {
+          "url": "URL do servidor",
+          "token": "Token de acesso",
+          "intervalo": "Intervalo de envio (minutos)"
+        },
+        "data_description": {
+          "url": "Altere caso o servidor seja migrado",
+          "token": "Altere caso o token seja regenerado",
+          "intervalo": "Com que frequência enviar os dados (1 a 60 minutos)"
+        }
+      }
+    }
+  }
+}
