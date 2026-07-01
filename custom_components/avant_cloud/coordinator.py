@@ -218,7 +218,8 @@ class AvantCloudCoordinator:
     # ── Envio para a API ───────────────────────────────────────────────────────
 
     async def _async_send(self, data: dict) -> None:
-        session = async_get_clientsession(self.hass, verify_ssl=False)
+        verify_ssl = self._url.startswith("https://")
+        session = async_get_clientsession(self.hass, verify_ssl=verify_ssl)
         url = f"{self._url}/api/ingest"
         headers = {
             "Authorization": f"Bearer {self._token}",

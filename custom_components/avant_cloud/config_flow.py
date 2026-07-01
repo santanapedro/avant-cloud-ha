@@ -34,7 +34,8 @@ def _schema_options(url: str, token: str, intervalo: int) -> vol.Schema:
 
 async def _validate(hass, url: str, token: str) -> str | None:
     """Testa a conexão. Retorna chave de erro ou None se OK."""
-    session = async_get_clientsession(hass, verify_ssl=False)
+    verify_ssl = url.startswith("https://")
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     try:
         async with session.post(
             f"{url}/api/ingest",
