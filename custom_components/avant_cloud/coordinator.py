@@ -86,6 +86,9 @@ class AvantCloudCoordinator:
         # ─ Último backup
         payload["ultimo_backup"] = self._get_state_safe("sensor.backup_last_successful_automatic_backup")
 
+        # ─ Intervalo configurado (usado pelo servidor para calcular online/offline)
+        payload["intervalo_minutos"] = self._intervalo
+
         # ─ Sensores customizados
         payload["sensores"] = await self._async_collect_sensores()
 
