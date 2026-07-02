@@ -238,23 +238,126 @@ class AvantCloudCoordinator:
     # ── Upload de backup ───────────────────────────────────────────────────────
 
     _UPLOAD_JITTER_MAX = 30 * 60  # espalha uploads em até 30 min
+    _SUPERVISOR_URL    = "http://supervisor"
 
     async def _maybe_upload_backup(self) -> None:
-        result = await self.hass.async_add_executor_job(self._find_newest_backup)
-        if not result:
+        supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "").strip()
+        if supervisor_token:
+            await self._maybe_upload_supervisor(supervisor_token)
+        else:
+            await self._maybe_upload_filesystem()
+
+    # ── Caminho HAOS / Supervised — API do Supervisor ─────────────────────────
+
+    async def _maybe_upload_supervisor(self, token: str) -> None:
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.get(
+                f"{self._SUPERVISOR_URL}/backups",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Avant Cloud: Supervisor /backups retornou %s", resp.status)
+                    return
+                data = await resp.json()
+        except Exception as exc:
+            _LOGGER.warning("Avant Cloud: erro ao listar backups via Supervisor: %s", exc)
             return
 
-        filepath, slug = result
+        backups = data.get("data", {}).get("backups", [])
+        if not backups:
+            _LOGGER.info("Avant Cloud: nenhum backup encontrado via Supervisor")
+            return
 
-        # Já foi enviado com sucesso
+        newest = max(backups, key=lambda b: b.get("date", ""))
+        slug = newest["slug"]
+        nome = newest.get("name", slug)
+
         if slug == self._last_backup_slug:
             self._pending_upload = None
             _LOGGER.debug("Avant Cloud: backup %s já enviado anteriormente, ignorando", slug)
             return
 
         now = datetime.now(timezone.utc).timestamp()
+        if self._pending_upload is None or self._pending_upload[1] != slug:
+            delay = random.uniform(0, self._UPLOAD_JITTER_MAX)
+            self._pending_upload = (None, slug, now + delay)
+            _LOGGER.info(
+                "Avant Cloud: novo backup detectado via Supervisor (%s) — upload em %.0f min",
+                nome, delay / 60,
+            )
+            return
 
-        # Novo backup detectado — agenda com jitter aleatório
+        _, _, upload_at = self._pending_upload
+        if now < upload_at:
+            return
+
+        success = await self._upload_via_supervisor(token, slug, nome)
+        if success:
+            self._last_backup_slug = slug
+            self._pending_upload = None
+
+    async def _upload_via_supervisor(self, token: str, slug: str, nome: str) -> bool:
+        session = async_get_clientsession(self.hass)
+        timeout = aiohttp.ClientTimeout(total=600)
+        try:
+            async with session.get(
+                f"{self._SUPERVISOR_URL}/backups/{slug}/download",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=timeout,
+            ) as dl:
+                if dl.status != 200:
+                    _LOGGER.warning("Avant Cloud: Supervisor retornou %s ao baixar backup %s", dl.status, slug)
+                    return False
+                content = await dl.read()
+
+            form = aiohttp.FormData()
+            form.add_field("slug", slug)
+            form.add_field("nome", nome)
+            form.add_field("arquivo", content, filename=f"{slug}.tar", content_type="application/x-tar")
+
+            async with session.post(
+                f"{self._url}/api/ingest/backup",
+                data=form,
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=timeout,
+            ) as up:
+                if up.status == 200:
+                    body = await up.json()
+                    if body.get("duplicado"):
+                        _LOGGER.debug("Avant Cloud: backup %s já existia no servidor", slug)
+                    else:
+                        _LOGGER.info(
+                            "Avant Cloud: backup %s enviado com sucesso (%.1f MB)",
+                            slug, len(content) / 1_048_576,
+                        )
+                    return True
+                text = await up.text()
+                _LOGGER.warning("Avant Cloud: falha ao enviar backup — %s %s", up.status, text[:200])
+                return False
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Avant Cloud: timeout ao transferir backup %s", slug)
+            return False
+        except Exception as exc:
+            _LOGGER.error("Avant Cloud: erro ao transferir backup %s: %s", slug, exc)
+            return False
+
+    # ── Caminho HA Container / Core — filesystem ──────────────────────────────
+
+    async def _maybe_upload_filesystem(self) -> None:
+        result = await self.hass.async_add_executor_job(self._find_newest_backup)
+        if not result:
+            return
+
+        filepath, slug = result
+
+        if slug == self._last_backup_slug:
+            self._pending_upload = None
+            _LOGGER.debug("Avant Cloud: backup %s já enviado anteriormente, ignorando", slug)
+            return
+
+        now = datetime.now(timezone.utc).timestamp()
         if self._pending_upload is None or self._pending_upload[1] != slug:
             delay = random.uniform(0, self._UPLOAD_JITTER_MAX)
             self._pending_upload = (filepath, slug, now + delay)
@@ -264,7 +367,6 @@ class AvantCloudCoordinator:
             )
             return
 
-        # Ainda dentro da janela de espera
         _, _, upload_at = self._pending_upload
         if now < upload_at:
             return
