@@ -24,13 +24,14 @@ def _schema_setup() -> vol.Schema:
     })
 
 
-def _schema_options(url: str, token: str, intervalo: int) -> vol.Schema:
+def _schema_options(url: str, token: str, intervalo: int, backup_dir: str) -> vol.Schema:
     return vol.Schema({
         vol.Required("url",       default=url):       str,
         vol.Required("token",     default=token):     str,
         vol.Required("intervalo", default=intervalo): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=60)
         ),
+        vol.Optional("backup_dir", default=backup_dir): str,
     })
 
 
@@ -105,14 +106,16 @@ class AvantCloudOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict | None = None):
         errors: dict[str, str] = {}
 
-        current_url      = self._config_entry.data.get("url", "")
-        current_token    = self._config_entry.data.get("token", "")
+        current_url       = self._config_entry.data.get("url", "")
+        current_token     = self._config_entry.data.get("token", "")
         current_intervalo = self._config_entry.options.get("intervalo", DEFAULT_INTERVAL)
+        current_backup_dir = self._config_entry.options.get("backup_dir", "")
 
         if user_input is not None:
-            url      = user_input["url"].rstrip("/")
-            token    = user_input["token"].strip()
-            intervalo = user_input["intervalo"]
+            url        = user_input["url"].rstrip("/")
+            token      = user_input["token"].strip()
+            intervalo  = user_input["intervalo"]
+            backup_dir = user_input.get("backup_dir", "").strip()
 
             # Só valida conexão se URL ou token mudaram
             if url != current_url or token != current_token:
@@ -121,15 +124,18 @@ class AvantCloudOptionsFlow(config_entries.OptionsFlow):
                     errors["base"] = error
 
             if not errors:
-                # Atualiza data (url + token) e options (intervalo)
+                # Atualiza data (url + token) e options (intervalo + backup_dir)
                 self.hass.config_entries.async_update_entry(
                     self._config_entry,
                     data={"url": url, "token": token},
                 )
-                return self.async_create_entry(title="", data={"intervalo": intervalo})
+                return self.async_create_entry(
+                    title="",
+                    data={"intervalo": intervalo, "backup_dir": backup_dir},
+                )
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_schema_options(current_url, current_token, current_intervalo),
+            data_schema=_schema_options(current_url, current_token, current_intervalo, current_backup_dir),
             errors=errors,
         )

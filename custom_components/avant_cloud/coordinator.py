@@ -275,10 +275,14 @@ class AvantCloudCoordinator:
             self._pending_upload = None
 
     def _find_newest_backup(self) -> tuple[str, str] | None:
-        candidates = [
-            "/backup",
-            os.path.join(self.hass.config.config_dir, "backups"),
-        ]
+        custom_dir = self.entry.options.get("backup_dir", "").strip()
+        if custom_dir:
+            candidates = [custom_dir]
+        else:
+            candidates = [
+                "/backup",
+                os.path.join(self.hass.config.config_dir, "backups"),
+            ]
         backup_dir = next((d for d in candidates if os.path.isdir(d)), None)
         if not backup_dir:
             _LOGGER.warning(

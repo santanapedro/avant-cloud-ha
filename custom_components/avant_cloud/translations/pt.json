@@ -31,12 +31,14 @@
         "data": {
           "url": "URL do servidor",
           "token": "Token de acesso",
-          "intervalo": "Intervalo de envio (minutos)"
+          "intervalo": "Intervalo de envio (minutos)",
+          "backup_dir": "Pasta de backups (opcional)"
         },
         "data_description": {
           "url": "Altere caso o servidor seja migrado",
           "token": "Altere caso o token seja regenerado",
-          "intervalo": "Com que frequência enviar os dados (1 a 60 minutos)"
+          "intervalo": "Com que frequência enviar os dados (1 a 60 minutos)",
+          "backup_dir": "Deixe em branco para detecção automática. Preencha somente se o upload de backup não funcionar (ex: /backup ou /config/backups)"
         }
       }
     }
