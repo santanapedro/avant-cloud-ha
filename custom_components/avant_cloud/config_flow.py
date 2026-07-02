@@ -15,10 +15,12 @@ from .const import DOMAIN, DEFAULT_INTERVAL
 _LOGGER = logging.getLogger(__name__)
 
 
+DEFAULT_URL = "https://cloud.avantautomacao.com"
+
 def _schema_setup() -> vol.Schema:
     return vol.Schema({
-        vol.Required("url"):   str,
-        vol.Required("token"): str,
+        vol.Required("url",   default=DEFAULT_URL): str,
+        vol.Required("token"):                      str,
     })
 
 
