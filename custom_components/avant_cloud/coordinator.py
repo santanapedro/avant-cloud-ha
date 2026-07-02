@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import platform
@@ -8,6 +9,7 @@ import random
 import re
 import socket
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -19,6 +21,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, DEFAULT_INTERVAL
+
+_MANIFEST = json.loads((Path(__file__).parent / "manifest.json").read_text())
+INTEGRATION_VERSION = _MANIFEST.get("version", "unknown")
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,6 +102,9 @@ class AvantCloudCoordinator:
 
         # ─ Intervalo configurado (usado pelo servidor para calcular online/offline)
         payload["intervalo_minutos"] = self._intervalo
+
+        # ─ Versão da integração instalada
+        payload["integration_version"] = INTEGRATION_VERSION
 
         # ─ Sensores customizados
         payload["sensores"] = await self._async_collect_sensores()
