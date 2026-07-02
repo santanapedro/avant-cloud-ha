@@ -275,7 +275,17 @@ class AvantCloudCoordinator:
             self._pending_upload = None
 
     def _find_newest_backup(self) -> tuple[str, str] | None:
-        backup_dir = "/backup"
+        candidates = [
+            "/backup",
+            os.path.join(self.hass.config.config_dir, "backups"),
+        ]
+        backup_dir = next((d for d in candidates if os.path.isdir(d)), None)
+        if not backup_dir:
+            _LOGGER.warning(
+                "Avant Cloud: diretório de backups não encontrado (tentado: %s)",
+                ", ".join(candidates),
+            )
+            return None
         try:
             entries = [
                 e for e in os.scandir(backup_dir)
@@ -290,7 +300,7 @@ class AvantCloudCoordinator:
             _LOGGER.info("Avant Cloud: backup mais recente detectado: %s", newest.name)
             return newest.path, slug
         except OSError as exc:
-            _LOGGER.warning("Avant Cloud: não foi possível acessar diretório de backups %s: %s", backup_dir, exc)
+            _LOGGER.warning("Avant Cloud: erro ao ler diretório de backups %s: %s", backup_dir, exc)
             return None
 
     async def _upload_backup_file(self, filepath: str, slug: str, nome: str) -> bool:
