@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import platform
+import random
 import re
 import socket
 from datetime import datetime, timedelta, timezone
@@ -32,6 +33,7 @@ class AvantCloudCoordinator:
         self._intervalo = int(entry.options.get("intervalo", entry.data.get("intervalo", DEFAULT_INTERVAL)))
         self._unsub = None
         self._last_backup_slug: str | None = None
+        self._pending_upload: tuple[str, str, float] | None = None  # (filepath, slug, upload_at)
 
     # ── Ciclo de vida ──────────────────────────────────────────────────────────
 
@@ -227,16 +229,41 @@ class AvantCloudCoordinator:
 
     # ── Upload de backup ───────────────────────────────────────────────────────
 
+    _UPLOAD_JITTER_MAX = 30 * 60  # espalha uploads em até 30 min
+
     async def _maybe_upload_backup(self) -> None:
         result = await self.hass.async_add_executor_job(self._find_newest_backup)
         if not result:
             return
+
         filepath, slug = result
+
+        # Já foi enviado com sucesso
         if slug == self._last_backup_slug:
+            self._pending_upload = None
             return
+
+        now = datetime.now(timezone.utc).timestamp()
+
+        # Novo backup detectado — agenda com jitter aleatório
+        if self._pending_upload is None or self._pending_upload[1] != slug:
+            delay = random.uniform(0, self._UPLOAD_JITTER_MAX)
+            self._pending_upload = (filepath, slug, now + delay)
+            _LOGGER.info(
+                "Avant Cloud: novo backup detectado (%s) — upload em %.0f min",
+                slug, delay / 60,
+            )
+            return
+
+        # Ainda dentro da janela de espera
+        _, _, upload_at = self._pending_upload
+        if now < upload_at:
+            return
+
         success = await self._upload_backup_file(filepath, slug, os.path.basename(filepath))
         if success:
             self._last_backup_slug = slug
+            self._pending_upload = None
 
     def _find_newest_backup(self) -> tuple[str, str] | None:
         backup_dir = "/backup"
