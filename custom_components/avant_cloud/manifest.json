@@ -1,7 +1,7 @@
 {
   "domain": "avant_cloud",
   "name": "Avant Cloud",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "documentation": "https://cloud.avantautomacao.com",
   "requirements": [],
   "after_dependencies": ["hassio", "backup", "network"],
