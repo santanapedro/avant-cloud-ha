@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import platform
+import re
 import socket
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -29,6 +31,7 @@ class AvantCloudCoordinator:
         # Intervalo vem das options (editável) — data é apenas fallback
         self._intervalo = int(entry.options.get("intervalo", entry.data.get("intervalo", DEFAULT_INTERVAL)))
         self._unsub = None
+        self._last_backup_slug: str | None = None
 
     # ── Ciclo de vida ──────────────────────────────────────────────────────────
 
@@ -56,6 +59,10 @@ class AvantCloudCoordinator:
             await self._async_send(data)
         except Exception as exc:
             _LOGGER.error("Avant Cloud: erro inesperado no ciclo de push: %s", exc)
+        try:
+            await self._maybe_upload_backup()
+        except Exception as exc:
+            _LOGGER.warning("Avant Cloud: erro no upload de backup: %s", exc)
 
     # ── Coleta de dados ────────────────────────────────────────────────────────
 
@@ -217,6 +224,69 @@ class AvantCloudCoordinator:
         if state and state.state not in ("unknown", "unavailable", "none", ""):
             return state.state
         return None
+
+    # ── Upload de backup ───────────────────────────────────────────────────────
+
+    async def _maybe_upload_backup(self) -> None:
+        result = await self.hass.async_add_executor_job(self._find_newest_backup)
+        if not result:
+            return
+        filepath, slug = result
+        if slug == self._last_backup_slug:
+            return
+        success = await self._upload_backup_file(filepath, slug, os.path.basename(filepath))
+        if success:
+            self._last_backup_slug = slug
+
+    def _find_newest_backup(self) -> tuple[str, str] | None:
+        backup_dir = "/backup"
+        try:
+            entries = [
+                e for e in os.scandir(backup_dir)
+                if e.is_file() and e.name.endswith(".tar")
+            ]
+            if not entries:
+                return None
+            newest = max(entries, key=lambda e: e.stat().st_mtime)
+            raw = os.path.splitext(newest.name)[0]
+            slug = re.sub(r"[^\w\-]", "", raw)[:64] or raw.replace(" ", "_")[:64]
+            return newest.path, slug
+        except OSError:
+            return None
+
+    async def _upload_backup_file(self, filepath: str, slug: str, nome: str) -> bool:
+        verify_ssl = self._url.startswith("https://")
+        session = async_get_clientsession(self.hass, verify_ssl=verify_ssl)
+        url = f"{self._url}/api/ingest/backup"
+        headers = {"Authorization": f"Bearer {self._token}"}
+        timeout = aiohttp.ClientTimeout(total=600)
+
+        try:
+            with open(filepath, "rb") as fobj:
+                form = aiohttp.FormData()
+                form.add_field("slug", slug)
+                form.add_field("nome", nome)
+                form.add_field("arquivo", fobj, filename=f"{slug}.tar", content_type="application/x-tar")
+                async with session.post(url, data=form, headers=headers, timeout=timeout) as resp:
+                    if resp.status == 200:
+                        body = await resp.json()
+                        if body.get("duplicado"):
+                            _LOGGER.debug("Avant Cloud: backup %s já existia no servidor", slug)
+                        else:
+                            _LOGGER.info("Avant Cloud: backup %s enviado com sucesso", slug)
+                        return True
+                    body = await resp.text()
+                    _LOGGER.warning("Avant Cloud: falha ao enviar backup — %s %s", resp.status, body[:200])
+                    return False
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Avant Cloud: timeout ao enviar backup %s", slug)
+            return False
+        except OSError as exc:
+            _LOGGER.warning("Avant Cloud: não foi possível ler backup %s: %s", slug, exc)
+            return False
+        except Exception as exc:
+            _LOGGER.error("Avant Cloud: erro ao enviar backup %s: %s", slug, exc)
+            return False
 
     # ── Envio para a API ───────────────────────────────────────────────────────
 
