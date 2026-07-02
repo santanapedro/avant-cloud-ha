@@ -282,12 +282,12 @@ class AvantCloudCoordinator:
                 if e.is_file() and e.name.endswith(".tar")
             ]
             if not entries:
-                _LOGGER.debug("Avant Cloud: nenhum arquivo .tar encontrado em %s", backup_dir)
+                _LOGGER.info("Avant Cloud: nenhum arquivo .tar encontrado em %s", backup_dir)
                 return None
             newest = max(entries, key=lambda e: e.stat().st_mtime)
             raw = os.path.splitext(newest.name)[0]
             slug = re.sub(r"[^\w\-]", "", raw)[:64] or raw.replace(" ", "_")[:64]
-            _LOGGER.debug("Avant Cloud: backup mais recente: %s", newest.name)
+            _LOGGER.info("Avant Cloud: backup mais recente detectado: %s", newest.name)
             return newest.path, slug
         except OSError as exc:
             _LOGGER.warning("Avant Cloud: não foi possível acessar diretório de backups %s: %s", backup_dir, exc)
